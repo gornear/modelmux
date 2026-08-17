@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Version>0.0.3</Version>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseRequestDelegateGenerator>true</UseRequestDelegateGenerator>
+    <Nullable>enable</Nullable>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <EnableUnsafeUTF7Encoding>false</EnableUnsafeUTF7Encoding>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(PublishAot)' == 'true'">
+    <StripSymbols>true</StripSymbols>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Templates\appsettings.template.json" LogicalName="modelmux.Templates.appsettings.template.json" />
+    <EmbeddedResource Include="Templates\config.example.template.json" LogicalName="modelmux.Templates.config.example.template.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Exclude runtime config files and templates from publish output (single-file distribution).
+         Runtime config is auto-generated in the current working directory at startup. -->
+    <None Update="appsettings.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <None Update="config.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <None Update="config.json.example" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <Content Remove="appsettings.json;config.json;config.json.example" />
+    <Content Remove="Templates\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.9" />
+  </ItemGroup>
+</Project>

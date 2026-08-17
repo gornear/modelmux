@@ -1,0 +1,90 @@
+name: .NET 10 Native AOT Multi-Platform Publish
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送 v1.0.0 等 tag 时触发
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish for ${{ matrix.os }} (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            executable_name: modelmux.exe
+            asset_name: modelmux-win-x64.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            executable_name: modelmux
+            asset_name: modelmux-linux-x64
+          - os: macos-latest
+            rid: osx-x64
+            executable_name: modelmux
+            asset_name: modelmux-osx-x64
+
+    steps:
+    # 1. 检出代码
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    # 2. 安装 .NET 10 SDK
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    # 3. 安装 Linux 编译依赖
+    - name: Install Linux Dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang zlib1g-dev
+
+    # 4. 执行 AOT 编译发布（单一二进制，无配置文件）
+    - name: Dotnet Publish (Native AOT)
+      run: |
+        dotnet publish -c Release -r ${{ matrix.rid }} /p:PublishAot=true -o ./publish-stage
+
+    # 5. 重命名为平台特定的资产名，避免同名冲突
+    - name: Rename binary to platform-specific asset name
+      shell: bash
+      run: |
+        mv publish-stage/${{ matrix.executable_name }} ${{ matrix.asset_name }}
+
+    # 6. 将裸二进制作为 Artifact 上传（不打 zip/tar.gz）
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.rid }}-binary
+        path: ${{ matrix.asset_name }}
+
+  # 建立后续 Job，收集所有平台的裸二进制发布到 Release 页面
+  create-release:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v8
+      with:
+        path: ./artifacts
+
+    # 将裸二进制文件平铺到一个目录中方便发布
+    - name: Flatten directory structure
+      run: |
+        mkdir ./release-files
+        find ./artifacts -type f -exec cp {} ./release-files/ \;
+        ls -R ./release-files
+
+    # 发布到 GitHub Release（下载列表直接是裸二进制，无压缩包）
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v3
+      with:
+        files: ./release-files/*
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

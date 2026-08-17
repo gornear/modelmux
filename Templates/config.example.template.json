@@ -1,0 +1,90 @@
+{
+  "localvllm": [
+    {
+      "baseUrl": "http://192.168.1.100:8000/v1",
+      "apiKey": "your-local-api-key",
+      "models": [
+        {
+          "modelid": "gemma4-it-31b",
+          "type": ["text", "image"],
+          "fallback": [
+            "deepseek/deepseek-v4-flash",
+            "deepseek/deepseek-v4-pro"
+          ],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40
+          }
+        },
+        {
+          "modelid": "gemma4-it-31b",
+          "alias": "gemma4-it-31b-thinking",
+          "type": ["text", "image"],
+          "fallback": [
+            "deepseek/deepseek-v4-flash-thinking",
+            "deepseek/deepseek-v4-pro-thinking"
+          ],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40,
+            "chat_template_kwargs": {"enable_thinking": true}
+          }
+        }
+      ]
+    }
+  ],
+  "deepseek": [
+    {
+      "baseUrl": "https://api.deepseek.com",
+      "apiKey": "your-model-api-key",
+      "models": [
+        {
+          "modelid": "deepseek-v4-pro",
+          "type": ["text"],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40,
+            "thinking": {
+              "type": "disabled"
+            }
+          }
+        },
+        {
+          "modelid": "deepseek-v4-flash",
+          "type": ["text"],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40,
+            "thinking": {
+              "type": "disabled"
+            }
+          }
+        },
+        {
+          "modelid": "deepseek-v4-pro",
+          "alias": "deepseek-v4-pro-thinking",
+          "type": ["text"],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40
+          }
+        },
+        {
+          "modelid": "deepseek-v4-flash",
+          "alias": "deepseek-v4-flash-thinking",
+          "type": ["text"],
+          "defaultParams": {
+            "temperature": 0.0,
+            "top_p": 0.9,
+            "top_k": 40
+          }
+        }
+      ]
+    }
+  ]
+}
