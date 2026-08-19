@@ -190,7 +190,12 @@ public static class ProxyEndpoint
     /// historical messages may still reference image_url/audio_url but their content
     /// has already been digested by the model in previous turns, so they do not
     /// require the model to be multimodal.
-    /// Matching is string-based (consistent with the rest of this AOT-first proxy).
+    ///
+    /// Detection also requires the multimodal block's payload (url) to be NON-EMPTY.
+    /// Some agents (e.g. hermes-agent) routinely emit an empty image_url part in every
+    /// turn even for pure-text requests; such empty blocks must NOT mark the request
+    /// as image/audio. This is enforced by real JSON parsing confined to the LAST
+    /// message's content only — tools schemas and other body fields are never scanned.
     /// </summary>
     private static HashSet<string>? DetectRequiredCapabilities(string path, string bodyText)
     {
@@ -202,18 +207,9 @@ public static class ProxyEndpoint
         if (path.Contains("/images/", StringComparison.OrdinalIgnoreCase))
             caps.Add("IMAGE");
 
-        // Body-based detection: only the LAST message's content matters.
-        var lastMessageContent = ExtractLastMessageContent(bodyText);
-        if (!string.IsNullOrEmpty(lastMessageContent))
-        {
-            if (lastMessageContent.Contains("image_url", StringComparison.OrdinalIgnoreCase) ||
-                lastMessageContent.Contains("input_image", StringComparison.OrdinalIgnoreCase))
-                caps.Add("IMAGE");
-
-            if (lastMessageContent.Contains("audio_url", StringComparison.OrdinalIgnoreCase) ||
-                lastMessageContent.Contains("input_audio", StringComparison.OrdinalIgnoreCase))
-                caps.Add("AUDIO");
-        }
+        // Body-based detection: only the LAST message's content matters, and only
+        // NON-EMPTY multimodal blocks count.
+        DetectLastMessageCapabilities(bodyText, caps);
 
         // Return null when no extra capability is required, so RouterService
         // skips the capability filter entirely (zero behavior change for text-only).
@@ -221,77 +217,138 @@ public static class ProxyEndpoint
     }
 
     /// <summary>
-    /// Extract the content of the LAST message object inside the "messages" array.
-    /// Returns the raw substring from the last "content" key to the end of that
-    /// message object (best-effort; empty string when not found).
-    /// AOT-safe: pure string/bracket scanning, no reflection or full deserialization.
+    /// Parse the request body and, if the LAST message in the messages array contains
+    /// non-empty multimodal content blocks, add IMAGE/AUDIO to caps. This runs entirely
+    /// inside the JsonDocument's lifetime (JsonElement values cannot outlive it).
+    /// AOT-safe: uses JsonDocument only, no reflection. Best-effort: never throws.
     /// </summary>
-    private static string ExtractLastMessageContent(string bodyText)
+    private static void DetectLastMessageCapabilities(string bodyText, HashSet<string> caps)
     {
         if (string.IsNullOrEmpty(bodyText))
-            return string.Empty;
+            return;
 
-        // Locate the "messages" array's opening bracket
-        var msgsIdx = bodyText.IndexOf("\"messages\"", StringComparison.Ordinal);
-        if (msgsIdx < 0)
-            return string.Empty;
-
-        var bracketIdx = bodyText.IndexOf('[', msgsIdx);
-        if (bracketIdx < 0)
-            return string.Empty;
-
-        // Find the last top-level '{' object inside the messages array.
-        // We scan from the opening '[' and track nesting depth, remembering the
-        // start index of the most recent object at depth 1 (i.e. a direct element).
-        int depth = 0;
-        int lastTopLevelObjectStart = -1;
-        bool inString = false;
-        bool escaped = false;
-
-        for (int i = bracketIdx; i < bodyText.Length; i++)
+        try
         {
-            char c = bodyText[i];
+            using var doc = JsonDocument.Parse(bodyText);
+            var root = doc.RootElement;
 
-            if (inString)
-            {
-                if (escaped) { escaped = false; continue; }
-                if (c == '\\') { escaped = true; continue; }
-                if (c == '"') { inString = false; continue; }
-                continue;
-            }
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("messages", out var messages) ||
+                messages.ValueKind != JsonValueKind.Array)
+                return;
 
-            if (c == '"')
-            {
-                inString = true;
-                continue;
-            }
+            var count = messages.GetArrayLength();
+            if (count == 0)
+                return;
 
-            if (c == '[') { depth++; continue; }
-            if (c == ']')
+            var last = messages[count - 1];
+            if (last.ValueKind != JsonValueKind.Object ||
+                !last.TryGetProperty("content", out var content))
+                return;
+
+            if (content.ValueKind != JsonValueKind.Array)
+                return; // plain string content is text-only
+
+            foreach (var block in content.EnumerateArray())
             {
-                depth--;
-                if (depth <= 0)
-                    break; // reached end of messages array
-                continue;
+                if (IsNonEmptyImageBlock(block))
+                    caps.Add("IMAGE");
+                else if (IsNonEmptyAudioBlock(block))
+                    caps.Add("AUDIO");
             }
-            if (c == '{')
+        }
+        catch
+        {
+            // best-effort: never break routing on parse errors
+        }
+    }
+
+    /// <summary>
+    /// True when a content block is an image part (image_url / input_image)
+    /// carrying a NON-EMPTY payload. An empty url (null, "", or an empty base64
+    /// data URI such as "data:image/png;base64,") is treated as absent.
+    /// </summary>
+    internal static bool IsNonEmptyImageBlock(JsonElement block)
+    {
+        return IsNonEmptyMultimodalBlock(block, "image_url", "input_image");
+    }
+
+    /// <summary>
+    /// True when a content block is an audio part (audio_url / input_audio)
+    /// carrying a NON-EMPTY payload.
+    /// </summary>
+    internal static bool IsNonEmptyAudioBlock(JsonElement block)
+    {
+        return IsNonEmptyMultimodalBlock(block, "audio_url", "input_audio");
+    }
+
+    /// <summary>
+    /// Shared helper: true when the block's "type" matches one of the given type names
+    /// AND its payload (the url within the same-named nested object, or a data URI)
+    /// is non-empty.
+    /// </summary>
+    private static bool IsNonEmptyMultimodalBlock(JsonElement block, params string[] typeNames)
+    {
+        if (block.ValueKind != JsonValueKind.Object)
+            return false;
+
+        if (!block.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String)
+            return false;
+
+        var t = type.GetString();
+        var matched = false;
+        foreach (var name in typeNames)
+        {
+            if (string.Equals(t, name, StringComparison.OrdinalIgnoreCase))
             {
-                if (depth == 1)
-                    lastTopLevelObjectStart = i;
-                depth++;
-                continue;
+                matched = true;
+                break;
             }
-            if (c == '}')
+        }
+        if (!matched)
+            return false;
+
+        // Payload lives in a nested object named the same as the type
+        // (e.g. {"type":"image_url","image_url":{"url":"..."}}).
+        if (block.TryGetProperty(t!, out var payload))
+        {
+            if (payload.ValueKind == JsonValueKind.Object &&
+                payload.TryGetProperty("url", out var url))
             {
-                depth--;
-                continue;
+                return IsNonEmptyUrl(url);
+            }
+            // Some clients inline the url directly at the top level of the payload.
+            if (payload.ValueKind == JsonValueKind.String)
+            {
+                return IsNonEmptyUrl(payload);
             }
         }
 
-        if (lastTopLevelObjectStart < 0)
-            return string.Empty;
+        return false;
+    }
 
-        return bodyText[lastTopLevelObjectStart..];
+    /// <summary>
+    /// True when the url payload is a non-empty string that is not an empty base64
+    /// data URI (e.g. "data:image/png;base64," with no data after the comma).
+    /// </summary>
+    internal static bool IsNonEmptyUrl(JsonElement url)
+    {
+        if (url.ValueKind != JsonValueKind.String)
+            return false;
+
+        var s = url.GetString();
+        if (string.IsNullOrWhiteSpace(s))
+            return false;
+
+        // Empty base64 data URI: "data:...;base64," with nothing after the comma.
+        var comma = s.LastIndexOf(',');
+        if (s.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma >= 0)
+        {
+            if (comma == s.Length - 1)
+                return false; // no base64 payload
+        }
+
+        return true;
     }
 
     /// <summary>
