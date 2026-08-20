@@ -383,12 +383,33 @@ Authorization: Bearer sk-your-unified-api-key
 | `<provider>` | string | 是 | Provider 命名空间（如 `local`、`deepseek`、`openai`） |
 | `<provider>[].baseUrl` | string | 是 | 上游 API 地址（如 `https://api.deepseek.com`，含/不含 `/v1` 均可） |
 | `<provider>[].apiKey` | string | 是 | 上游 API Key（端点组内所有模型共享） |
+| `<provider>[].headers` | object | 否 | 自定义 HTTP Header，注入到该 provider 的每个上游请求中。同名 Header 优先使用客户端提供的值。敏感 Header（`Authorization`、`Host`、`Connection`、`Transfer-Encoding`）受保护，不可通过此字段覆盖。 |
 | `<provider>[].models` | array | 是 | 该端点组下的模型列表 |
 | `models[].modelid` | string | 是 | 上游模型名，实际发送给 Provider API 的名称 |
 | `models[].alias` | string │ string[] | 否 | 对外暴露的别名（在 `/v1/models` 中显示为 `provider/alias`）。可以是单个字符串 `"x"` 或数组 `["x","y"]`。每个别名都会注册一个独立公开名并路由到同一个上游 `modelid`。设置后客户端使用别名访问，但上游收到的仍然是 `modelid`。当设置任何别名后，`modelid` 本身不再暴露（如需同时暴露，请把 `modelid` 也写进 alias 数组）。适用于为同一模型暴露思考/非思考等不同参数变体。 |
 | `models[].type` | string[] | 否 | 模型支持的能力集合（如 `["text"]`、`["text","image"]`、`["text","image","audio"]`）。缺省时默认为 `["text"]`。用于能力路由：当请求需要 image/audio 能力而当前模型不支持时，自动沿 fallback 链查找支持该能力的模型。 |
 | `models[].defaultParams` | object | 否 | 默认参数（支持 number/string/bool/object），客户端未传时注入 |
 | `models[].fallback` | string[] | 否 | 备用模型列表，使用 `provider/modelid` 格式引用 |
+
+### 自定义 Header
+
+通过在 provider 级别添加 `headers` 对象，可以将自定义 HTTP Header 注入到每个上游请求中：
+
+```json
+{
+  "local": [{
+    "baseUrl": "http://172.1.1.2:14850/v1",
+    "apiKey": "=whatthefuck=",
+    "headers": {
+      "X-Title": "modelmux",
+      "X-Custom-Header": "value"
+    },
+    "models": [...]
+  }]
+}
+```
+
+这些 Header 在复制客户端 Header 之后、发送请求之前注入。如果客户端已发送同名 Header，客户端值将被保留，配置中的值将被忽略。敏感 Header（`Authorization`、`Host`、`Connection`、`Transfer-Encoding`）受保护，不可通过此字段设置。
 
 ### 常见配置示例
 

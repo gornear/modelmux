@@ -100,7 +100,8 @@ public class RouterService
                     UpstreamModelName = entry.UpstreamModelName ?? modelName,
                     BaseUrl = entry.BaseUrl,
                     ApiKey = entry.ApiKey,
-                    DefaultParams = entry.DefaultParams
+                    DefaultParams = entry.DefaultParams,
+                    Headers = entry.Headers
                 });
                 _logger.LogDebug("Route added: {Model} @ {BaseUrl}", modelName, entry.BaseUrl);
             }
@@ -159,5 +160,10 @@ public class RouterService
         public string BaseUrl { get; init; } = string.Empty;
         public string ApiKey { get; init; } = string.Empty;
         public Dictionary<string, JsonElement>? DefaultParams { get; init; }
+        /// <summary>
+        /// Custom HTTP headers inherited from the provider EndpointGroup.
+        /// Injected into every upstream request for this model.
+        /// </summary>
+        public Dictionary<string, string>? Headers { get; init; }
     }
 }

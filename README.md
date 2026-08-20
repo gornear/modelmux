@@ -362,12 +362,33 @@ Authorization: Bearer sk-your-unified-api-key
 | `<provider>` | string | Yes | Provider namespace (e.g. `local`, `deepseek`, `openai`) |
 | `<provider>[].baseUrl` | string | Yes | Upstream API URL (e.g. `https://api.deepseek.com`, with or without `/v1` suffix) |
 | `<provider>[].apiKey` | string | Yes | Upstream API key (shared by all models under this endpoint group) |
+| `<provider>[].headers` | object | No | Custom HTTP headers injected into every upstream request for this provider. Client-supplied headers of the same name take precedence. Sensitive headers (`Authorization`, `Host`, `Connection`, `Transfer-Encoding`) are protected and cannot be overridden. |
 | `<provider>[].models` | array | Yes | Model entries under this endpoint group |
 | `models[].modelid` | string | Yes | Upstream model name sent to the provider's API |
 | `models[].alias` | string │ string[] | No | Public-facing name override(s): a single string `"x"` or an array `["x","y"]`. Each alias is exposed as `provider/alias` in `/v1/models` and routes to the same upstream `modelid`. When any alias is set, `modelid` itself is not exposed (list it explicitly as an alias if you also want it). Useful for exposing thinking/non-thinking variants of the same model. |
 | `models[].type` | string[] | No | Capability set the model supports (e.g. `["text"]`, `["text","image"]`, `["text","image","audio"]`). Defaults to `["text"]` when omitted. Used for capability routing: when a request needs image/audio that the model lacks, ModelMux searches the fallback chain for a capable model. |
 | `models[].defaultParams` | object | No | Default body parameters (number/string/bool/object). Injected when absent from client request |
 | `models[].fallback` | string[] | No | Ordered list of fallback models in `provider/modelid` format |
+
+### Custom Headers
+
+You can inject custom HTTP headers into every upstream request for a provider by adding a `headers` object at the provider level:
+
+```json
+{
+  "local": [{
+    "baseUrl": "http://172.1.1.2:14850/v1",
+    "apiKey": "=whatthefuck=",
+    "headers": {
+      "X-Title": "modelmux",
+      "X-Custom-Header": "value"
+    },
+    "models": [...]
+  }]
+}
+```
+
+These headers are added to the upstream request after copying client headers. If the client already sends a header with the same name, the client's value is preserved and the configured value is ignored. Sensitive headers (`Authorization`, `Host`, `Connection`, `Transfer-Encoding`) are protected and cannot be set via this field.
 
 ### Example Configurations
 

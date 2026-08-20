@@ -38,6 +38,7 @@ public class ProxyService
         string targetModel,
         HttpRequest incomingRequest,
         Dictionary<string, JsonElement>? defaultParams = null,
+        Dictionary<string, string>? headers = null,
         CancellationToken ct = default)
     {
         // Build upstream URL: baseUrl may or may not include a path prefix (e.g. /v1).
@@ -131,6 +132,24 @@ public class ProxyService
 
         // Set the provider's API key
         upstreamRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        // Inject provider-level custom headers (client headers take precedence)
+        if (headers != null)
+        {
+            foreach (var header in headers)
+            {
+                // Skip sensitive headers that should not be overridden
+                var keyLower = header.Key.ToLowerInvariant();
+                if (keyLower is "host" or "authorization" or "connection" or "transfer-encoding")
+                    continue;
+
+                // Only add if the client didn't already send this header
+                if (!incomingRequest.Headers.ContainsKey(header.Key))
+                {
+                    upstreamRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+        }
 
         try
         {
