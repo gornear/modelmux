@@ -58,7 +58,7 @@ public class ConfigReloadService : IDisposable
 
             if (providers != null && providers.Count > 0)
             {
-                var config = RouterConfig.Flatten(providers);
+                var config = RouterConfig.Flatten(providers, _logger);
                 lock (_lock)
                 {
                     _config = config;

@@ -19,7 +19,7 @@
         },
         {
           "modelid": "gemma4-it-31b",
-          "alias": "gemma4-it-31b-thinking",
+          "alias": ["gemma4-it-31b-thinking", "gemma4-it-31b-fast"],
           "type": ["text", "image"],
           "fallback": [
             "deepseek/deepseek-v4-flash-thinking",

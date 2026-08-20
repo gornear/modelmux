@@ -189,7 +189,7 @@ cp config.json.example config.json
 
 > **提示**：`baseUrl` 可以写 `http://host:port` 也可以写 `http://host:port/v1`。
 >
-> **模型别名（alias）**：使用 `alias` 可以让同一个上游模型以不同名称对外暴露，并搭配不同的 `defaultParams`。例如同一个 vLLM 模型可同时以 `local/gemma4-it-31b` 和 `local/gemma4-it-31b-thinking` 列出——上游在两种情况下收到的 `"model"` 都是 `"gemma4-it-31b"`，但 thinking 版本会注入 `"chat_template_kwargs": {"enable_thinking": true}`。
+> **模型别名（alias）**：使用 `alias` 可以让同一个上游模型以一个或多个名称对外暴露，并搭配不同的 `defaultParams`。`alias` 可以是单个字符串，也可以是字符串数组。例如同一个 vLLM 模型可同时以 `local/gemma4-it-31b` 和 `local/gemma4-it-31b-thinking` 列出——上游在两种情况下收到的 `"model"` 都是 `"gemma4-it-31b"`，但 thinking 版本会注入 `"chat_template_kwargs": {"enable_thinking": true}`。若使用数组如 `["gemma4-it-31b", "gemma4-it-31b-thinking"]`，则可在一条记录中同时暴露多个名称。
 >
 > **能力路由（type）**：使用 `type` 字段声明模型支持的能力集合。当客户端请求携带 image/audio 内容（例如 `messages[].content` 中的 `image_url`/`audio_url` 块，或访问 `/v1/images/*`、`/v1/audio/*` 路径），而主模型不支持对应能力时，modelmux 会自动沿 `fallback` 链查找支持该能力的模型并转发；若整条链都无匹配，则返回 `capability_unavailable` 错误。纯文本请求不受影响（所有模型默认支持 text）。
 >
@@ -385,7 +385,7 @@ Authorization: Bearer sk-your-unified-api-key
 | `<provider>[].apiKey` | string | 是 | 上游 API Key（端点组内所有模型共享） |
 | `<provider>[].models` | array | 是 | 该端点组下的模型列表 |
 | `models[].modelid` | string | 是 | 上游模型名，实际发送给 Provider API 的名称 |
-| `models[].alias` | string | 否 | 对外暴露的别名（在 `/v1/models` 中显示为 `provider/alias`）。设置后客户端使用别名访问，但上游收到的仍然是 `modelid`。适用于为同一模型暴露思考/非思考等不同参数变体。 |
+| `models[].alias` | string │ string[] | 否 | 对外暴露的别名（在 `/v1/models` 中显示为 `provider/alias`）。可以是单个字符串 `"x"` 或数组 `["x","y"]`。每个别名都会注册一个独立公开名并路由到同一个上游 `modelid`。设置后客户端使用别名访问，但上游收到的仍然是 `modelid`。当设置任何别名后，`modelid` 本身不再暴露（如需同时暴露，请把 `modelid` 也写进 alias 数组）。适用于为同一模型暴露思考/非思考等不同参数变体。 |
 | `models[].type` | string[] | 否 | 模型支持的能力集合（如 `["text"]`、`["text","image"]`、`["text","image","audio"]`）。缺省时默认为 `["text"]`。用于能力路由：当请求需要 image/audio 能力而当前模型不支持时，自动沿 fallback 链查找支持该能力的模型。 |
 | `models[].defaultParams` | object | 否 | 默认参数（支持 number/string/bool/object），客户端未传时注入 |
 | `models[].fallback` | string[] | 否 | 备用模型列表，使用 `provider/modelid` 格式引用 |
