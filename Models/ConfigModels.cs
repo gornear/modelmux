@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Logging;
 
 namespace modelmux.Models;
 
@@ -41,7 +42,9 @@ public class RouterConfig
     /// baseUrl and apiKey are inherited from EndpointGroup; fallback values are
     /// already in "Provider/modelid" format.
     /// </summary>
-    public static RouterConfig Flatten(Dictionary<string, List<EndpointGroup>> providers)
+    public static RouterConfig Flatten(
+        Dictionary<string, List<EndpointGroup>> providers,
+        ILogger? logger = null)
     {
         var config = new RouterConfig
         {
@@ -56,19 +59,38 @@ public class RouterConfig
 
                 foreach (var pm in group.Models)
                 {
-                    // Public-facing key: alias takes priority over modelid
-                    var publicName = pm.Alias ?? pm.ModelId;
-                    var key = $"{provider}/{publicName}";
-                    config.Models[key] = new ModelEntry
+                    // Public-facing keys. When any alias is set, only the alias(es) are
+                    // exposed; otherwise the modelid itself is the public name.
+                    var aliases = pm.GetAliases();
+                    var publicNames = aliases ?? new List<string> { pm.ModelId };
+
+                    foreach (var publicName in publicNames)
                     {
-                        BaseUrl = group.BaseUrl,
-                        ApiKey = group.ApiKey,
-                        // Upstream model name: always use the real modelid, never the alias
-                        UpstreamModelName = pm.ModelId,
-                        DefaultParams = pm.DefaultParams,
-                        Fallback = pm.Fallback,
-                        Capabilities = NormalizeCapabilities(pm.Type)
-                    };
+                        var key = $"{provider}/{publicName}";
+
+                        // Conflict tolerance: if another model already registered this
+                        // public name within the same provider, keep the FIRST registration
+                        // and skip the duplicate (with a warning).
+                        if (config.Models.ContainsKey(key))
+                        {
+                            logger?.LogWarning(
+                                "Duplicate public model name '{Key}' under provider '{Provider}'; " +
+                                "keeping the first registration and skipping model '{ModelId}' after alias '{Alias}'.",
+                                key, provider, pm.ModelId, string.Join(",", publicNames));
+                            continue;
+                        }
+
+                        config.Models[key] = new ModelEntry
+                        {
+                            BaseUrl = group.BaseUrl,
+                            ApiKey = group.ApiKey,
+                            // Upstream model name: always use the real modelid, never the alias
+                            UpstreamModelName = pm.ModelId,
+                            DefaultParams = pm.DefaultParams,
+                            Fallback = pm.Fallback,
+                            Capabilities = NormalizeCapabilities(pm.Type)
+                        };
+                    }
                 }
             }
         }
@@ -114,12 +136,64 @@ public class ProviderModel
 {
     public string ModelId { get; set; } = string.Empty;
     /// <summary>
-    /// Optional public-facing alias. When set, the model is exposed as "provider/alias"
+    /// Optional public-facing alias(es). When set, the model is exposed as "provider/alias"
     /// to clients and in /v1/models, but upstream requests still use ModelId.
     /// Useful for exposing the same physical model with different defaultParams
     /// (e.g. thinking vs non-thinking mode).
+    ///
+    /// Accepts a single string ("x") OR an array of strings (["x","y"]). When multiple
+    /// aliases are given, every alias registers a distinct public key pointing to the
+    /// same upstream model. When any alias is set, ModelId itself is NOT exposed except
+    /// through an explicit alias name.
+    ///
+    /// Stored as JsonElement because System.Text.Json's source generator cannot bind both
+    /// a scalar string and an array to a single strongly-typed property; normalization to
+    /// a List&lt;string&gt; happens in Flatten() via <see cref="GetAliases"/>.
     /// </summary>
-    public string? Alias { get; set; }
+    public JsonElement? Alias { get; set; }
+
+    /// <summary>
+    /// Normalize the (possibly polymorphic) Alias into a List&lt;string&gt;, or null when
+    /// no alias is configured. A scalar string becomes a single-element list; an array
+    /// yields one entry per non-empty string element; any other value shape (object,
+    /// number, etc.) is treated as "no alias" for resilience.
+    /// </summary>
+    public List<string>? GetAliases()
+    {
+        if (Alias == null)
+            return null;
+
+        var elem = Alias.Value;
+        var result = new List<string>();
+
+        switch (elem.ValueKind)
+        {
+            case JsonValueKind.String:
+                var s = elem.GetString();
+                if (!string.IsNullOrWhiteSpace(s))
+                    result.Add(s.Trim());
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in elem.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String)
+                    {
+                        var t = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(t))
+                            result.Add(t.Trim());
+                    }
+                }
+                break;
+
+            default:
+                // Object / number / boolean / null → treat as unset.
+                return null;
+        }
+
+        return result.Count > 0 ? result : null;
+    }
+
     public Dictionary<string, JsonElement>? DefaultParams { get; set; }
     public List<string>? Fallback { get; set; }
     /// <summary>
@@ -130,7 +204,6 @@ public class ProviderModel
     /// </summary>
     public List<string>? Type { get; set; }
 }
-
 /// <summary>
 /// Flattened runtime model entry (unchanged from previous version).
 /// </summary>

@@ -283,7 +283,7 @@ Deployment guide (for AI agents / automation):
        "[].apiKey"             Upstream API key shared by all models in the group
        "[].models"             Array of models under this endpoint group
        "models[].modelid"      Upstream model name sent to the provider API
-       "models[].alias"        Optional public-facing alias (exposed as provider/alias)
+       "models[].alias"        Optional public alias; string OR array of strings (exposed as provider/alias)
        "models[].type"         Optional capability list (["text"], ["image"], ["audio"])
        "models[].defaultParams" Optional default params injected when client omits them
        "models[].fallback"     Optional fallback models as "provider/modelid"

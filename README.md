@@ -187,7 +187,7 @@ Edit `appsettings.json` to set the listen address and unified API key:
 
 > **Note**: `baseUrl` may include a path prefix (e.g. `http://host:8000/v1`) or not. The program automatically deduplicates overlapping path prefixes — no `/v1/v1` double-writes.
 >
-> **Model Alias**: Use `alias` to expose the same upstream model under a different public name with different `defaultParams`. For example, the same vLLM model can be listed as both `local/gemma4-it-31b` and `local/gemma4-it-31b-thinking` — the upstream receives `"model":"gemma4-it-31b"` in both cases, but the thinking variant injects `"chat_template_kwargs": {"enable_thinking": true}`.
+> **Model Alias**: Use `alias` to expose the same upstream model under one or more public names with different `defaultParams`. It accepts a single string or an array of strings. For example, the same vLLM model can be listed as both `local/gemma4-it-31b` and `local/gemma4-it-31b-thinking` — the upstream receives `"model":"gemma4-it-31b"` in both cases, but the thinking variant injects `"chat_template_kwargs": {"enable_thinking": true}`. With an array you could expose it under `["gemma4-it-31b", "gemma4-it-31b-thinking"]` in one entry.
 
 ### 3. Build
 
@@ -364,7 +364,7 @@ Authorization: Bearer sk-your-unified-api-key
 | `<provider>[].apiKey` | string | Yes | Upstream API key (shared by all models under this endpoint group) |
 | `<provider>[].models` | array | Yes | Model entries under this endpoint group |
 | `models[].modelid` | string | Yes | Upstream model name sent to the provider's API |
-| `models[].alias` | string | No | Public-facing name override (exposed as `provider/alias` in `/v1/models`). When set, clients use the alias, but the upstream receives `modelid`. Useful for exposing thinking/non-thinking variants of the same model. |
+| `models[].alias` | string │ string[] | No | Public-facing name override(s): a single string `"x"` or an array `["x","y"]`. Each alias is exposed as `provider/alias` in `/v1/models` and routes to the same upstream `modelid`. When any alias is set, `modelid` itself is not exposed (list it explicitly as an alias if you also want it). Useful for exposing thinking/non-thinking variants of the same model. |
 | `models[].type` | string[] | No | Capability set the model supports (e.g. `["text"]`, `["text","image"]`, `["text","image","audio"]`). Defaults to `["text"]` when omitted. Used for capability routing: when a request needs image/audio that the model lacks, ModelMux searches the fallback chain for a capable model. |
 | `models[].defaultParams` | object | No | Default body parameters (number/string/bool/object). Injected when absent from client request |
 | `models[].fallback` | string[] | No | Ordered list of fallback models in `provider/modelid` format |
