@@ -118,6 +118,7 @@ public static class ProxyEndpoint
                 route.UpstreamModelName,
                 context.Request,
                 route.DefaultParams,
+                route.Headers,
                 ct);
 
             if (upstreamResponse != null)

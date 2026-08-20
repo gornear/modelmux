@@ -281,12 +281,14 @@ Deployment guide (for AI agents / automation):
        "<provider>"            Provider namespace (e.g. "local", "deepseek", "openai")
        "[].baseUrl"            Upstream API base URL (e.g. https://api.deepseek.com)
        "[].apiKey"             Upstream API key shared by all models in the group
+       "[].headers"            Optional custom HTTP headers injected into every upstream request
        "[].models"             Array of models under this endpoint group
        "models[].modelid"      Upstream model name sent to the provider API
        "models[].alias"        Optional public alias; string OR array of strings (exposed as provider/alias)
        "models[].type"         Optional capability list (["text"], ["image"], ["audio"])
        "models[].defaultParams" Optional default params injected when client omits them
        "models[].fallback"     Optional fallback models as "provider/modelid"
+       "[].headers"            Optional custom HTTP headers (e.g. X-Title=modelmux) injected into every upstream request for that provider
 
   4. Start the gateway:
        modelmux serve

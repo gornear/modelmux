@@ -87,6 +87,7 @@ public class RouterConfig
                             // Upstream model name: always use the real modelid, never the alias
                             UpstreamModelName = pm.ModelId,
                             DefaultParams = pm.DefaultParams,
+                            Headers = group.Headers,
                             Fallback = pm.Fallback,
                             Capabilities = NormalizeCapabilities(pm.Type)
                         };
@@ -125,6 +126,12 @@ public class EndpointGroup
 {
     public string? BaseUrl { get; set; }
     public string? ApiKey { get; set; }
+    /// <summary>
+    /// Optional custom HTTP headers to inject into every upstream request
+    /// for this provider. Values here are overridden by client-supplied
+    /// headers of the same name.
+    /// </summary>
+    public Dictionary<string, string>? Headers { get; set; }
     public List<ProviderModel>? Models { get; set; }
 }
 
@@ -195,6 +202,11 @@ public class ProviderModel
     }
 
     public Dictionary<string, JsonElement>? DefaultParams { get; set; }
+    /// <summary>
+    /// Custom HTTP headers inherited from the parent EndpointGroup.
+    /// Injected into every upstream request for this model.
+    /// </summary>
+    public Dictionary<string, string>? Headers { get; set; }
     public List<string>? Fallback { get; set; }
     /// <summary>
     /// The capability set this model supports (e.g. ["text"], ["text","image"], ["text","image","audio"]).
@@ -221,6 +233,11 @@ public class ModelEntry
     /// Supports any JSON value type (number, string, bool, object, array) via JsonElement.
     /// </summary>
     public Dictionary<string, JsonElement>? DefaultParams { get; set; }
+    /// <summary>
+    /// Custom HTTP headers inherited from the parent EndpointGroup.
+    /// Injected into every upstream request for this model.
+    /// </summary>
+    public Dictionary<string, string>? Headers { get; set; }
     public List<string>? Fallback { get; set; }
     /// <summary>
     /// Normalized capability set (uppercase, e.g. {"TEXT","IMAGE"}).
