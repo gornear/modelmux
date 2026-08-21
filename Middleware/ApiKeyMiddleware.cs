@@ -8,13 +8,13 @@ public class ApiKeyMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ApiKeyMiddleware> _logger;
-    private readonly string? _apiKey;
+    private readonly ApiKeyList? _apiKeys;
 
     public ApiKeyMiddleware(RequestDelegate next, ILogger<ApiKeyMiddleware> logger, AppSettings appSettings)
     {
         _next = next;
         _logger = logger;
-        _apiKey = appSettings.ApiKey;
+        _apiKeys = appSettings.ApiKey;
     }
 
     public async Task InvokeAsync(HttpContext context)
@@ -27,7 +27,7 @@ public class ApiKeyMiddleware
         }
 
         // If no API key configured, allow all requests (passthrough mode)
-        if (string.IsNullOrEmpty(_apiKey))
+        if (_apiKeys is null or { IsEmpty: true })
         {
             await _next(context);
             return;
@@ -54,7 +54,7 @@ public class ApiKeyMiddleware
         }
 
         var token = authHeader["Bearer ".Length..].Trim();
-        if (!string.Equals(token, _apiKey, StringComparison.Ordinal))
+        if (!_apiKeys.Contains(token))
         {
             _logger.LogWarning("Invalid API key from {IP}", context.Connection.RemoteIpAddress);
             context.Response.StatusCode = 401;

@@ -293,7 +293,8 @@ Deployment guide (for AI agents / automation):
   4. Start the gateway:
        modelmux serve
      appsettings.json is auto-generated on first start. Edit it to set:
-       "ApiKey"                          The unified client-facing API key (REQUIRED - clients send this)
+       "ApiKey"                          The unified client-facing API key(s) (REQUIRED - clients send one of these)
+                                          Accepts a string or an array of strings; any listed key is accepted
        "Kestrel.Endpoints.Http.Url"      Listen address (default http://0.0.0.0:5000)
 
   5. Endpoints:

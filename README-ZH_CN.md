@@ -366,7 +366,7 @@ Authorization: Bearer sk-your-unified-api-key
 |------|------|--------|------|
 | `Kestrel.Endpoints.Http.Url` | string | `http://0.0.0.0:5000` | 监听地址 |
 | `Kestrel.Limits.MaxConcurrentConnections` | int | 200 | 最大并发连接 |
-| `ApiKey` | string | — | 统一 API Key（客户端使用） |
+| `ApiKey` | string \| string[] | — | 统一 API Key（客户端使用）；单个字符串或字符串数组，任一匹配即通过 |
 | `RequestTimeoutSeconds` | int | 300 | 上游请求超时（秒） |
 | `MaxRetryAttempts` | int | 3 | Fallback 最大尝试次数 |
 | `DebugPrompt` | bool | false | 设为 true 时，Debug 级别日志输出 messages 内容（注意隐私） |

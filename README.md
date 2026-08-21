@@ -345,7 +345,7 @@ Authorization: Bearer sk-your-unified-api-key
 |---|---|---|---|
 | `Kestrel.Endpoints.Http.Url` | string | `http://0.0.0.0:5000` | Listen address |
 | `Kestrel.Limits.MaxConcurrentConnections` | int | 200 | Max concurrent connections |
-| `ApiKey` | string | — | Unified API key (used by clients) |
+| `ApiKey` | string \| string[] | — | Unified API key(s) (used by clients); a single string or an array of accepted keys |
 | `RequestTimeoutSeconds` | int | 300 | Upstream request timeout (seconds) |
 | `MaxRetryAttempts` | int | 3 | Max fallback attempts |
 | `DebugPrompt` | bool | false | When true, logs message content at Debug level (privacy-sensitive) |
