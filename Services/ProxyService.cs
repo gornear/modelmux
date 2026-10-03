@@ -577,6 +577,8 @@ public class ProxyService
     ///     → https://api.deepseek.com/v1/models
     ///   baseUrl="https://dashscope.aliyuncs.com/compatible-mode/v1" + path="/v1/chat/completions"
     ///     → https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    ///   baseUrl="https://ark.cn-beijing.volces.com/api/v3" + path="/v1/chat/completions"
+    ///     → https://ark.cn-beijing.volces.com/api/v3/chat/completions  (baseUrl's version wins)
     /// </summary>
     internal static string BuildUpstreamUrl(string baseUrl, string path)
     {
@@ -596,15 +598,17 @@ public class ProxyService
             {
                 relativePath = relativePath[prefix.Length..];
             }
-            // Case 2: baseUrl already ends with the API version segment (e.g. "/v1" or
-            // "/compatible-mode/v1") while path starts with that same segment (e.g. "v1/chat/...").
-            // This happens for OpenAI-compatible endpoints whose baseUrl carries a non-"/v1"
-            // prefix (DashScope "/compatible-mode/v1"). Strip the leading duplicated segment.
+            // Case 2: baseUrl already ends with an API version segment (e.g. "/v1", "v3",
+            // "/compatible-mode/v1") while path starts with a version segment (e.g. "v1/chat/...").
+            // Whenever the baseUrl carries its own version segment, that version is authoritative:
+            // strip the leading version segment from path instead of concatenating the two.
+            // This covers OpenAI-style bases ("/v1"), non-"/v1" prefixes (DashScope
+            // "/compatible-mode/v1") and versioned bases such as Ark "/api/v3".
             else
             {
                 var baseLastSegment = basePath.Split('/').Last();
                 var pathFirstSegment = relativePath.Split('/').First();
-                if (baseLastSegment.Equals(pathFirstSegment, StringComparison.OrdinalIgnoreCase))
+                if (IsVersionSegment(baseLastSegment) && IsVersionSegment(pathFirstSegment))
                 {
                     var segments = relativePath.Split('/');
                     relativePath = string.Join('/', segments.Skip(1));
@@ -615,5 +619,23 @@ public class ProxyService
         return basePath.Length > 0
             ? $"{authority}{basePath}/{relativePath.TrimStart('/')}"
             : $"{authority}/{relativePath.TrimStart('/')}";
+    }
+
+    /// <summary>
+    /// Returns true when a URL path segment looks like an API version segment:
+    /// "v" (case-insensitive) followed by one or more digits, e.g. "v1", "v2", "V3".
+    /// </summary>
+    private static bool IsVersionSegment(string segment)
+    {
+        if (segment.Length < 2 || (segment[0] != 'v' && segment[0] != 'V'))
+            return false;
+
+        for (var i = 1; i < segment.Length; i++)
+        {
+            if (!char.IsAsciiDigit(segment[i]))
+                return false;
+        }
+
+        return true;
     }
 }
