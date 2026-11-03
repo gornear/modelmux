@@ -170,6 +170,7 @@ Edit `appsettings.json` to set the listen address and unified API key:
     "RequestTimeoutSeconds": 300,
     "MaxRetryAttempts": 3,
     "DebugPrompt": false,
+    "ExposeUpstreamErrors": true,
     "HealthCheck": {
         "Enabled": true,
         "IntervalSeconds": 30,
@@ -328,6 +329,35 @@ Authorization: Bearer sk-your-unified-api-key
 
 ### Error Response
 
+When every route in the fallback chain fails, ModelMux returns the upstream errors
+it collected so the caller can see the real cause instead of a generic message:
+
+```json
+{
+  "error": {
+    "message": "All routes exhausted for model 'openrouter/google/gemini-3.8-flash'",
+    "type": "all_routes_failed",
+    "attempts": [
+      {
+        "model": "openrouter/google/gemini-3.8-flash",
+        "status": 403,
+        "upstream_error": {
+          "message": "This model is not available in your region.",
+          "code": "403"
+        }
+      }
+    ]
+  }
+}
+```
+
+`error.message` and `error.type` keep their original shape, so existing clients are
+unaffected. `attempts` is capped at 10 entries with each error message truncated to
+512 characters. Set `ExposeUpstreamErrors: false` to omit `attempts` entirely (logs
+still record upstream errors).
+
+Routing errors that occur before any upstream call keep their original shape:
+
 ```json
 {
   "error": {
@@ -349,6 +379,7 @@ Authorization: Bearer sk-your-unified-api-key
 | `RequestTimeoutSeconds` | int | 300 | Upstream request timeout (seconds) |
 | `MaxRetryAttempts` | int | 3 | Max fallback attempts |
 | `DebugPrompt` | bool | false | When true, logs message content at Debug level (privacy-sensitive) |
+| `ExposeUpstreamErrors` | bool | true | When true, the final `all_routes_failed` response includes an `attempts` array with each upstream's status code and truncated error message. Set to `false` when the gateway is publicly exposed and upstream error bodies may contain sensitive data. Logs always record upstream errors regardless of this setting. |
 | `HealthCheck.Enabled` | bool | true | Enable background health checks |
 | `HealthCheck.IntervalSeconds` | int | 30 | Polling interval (seconds) |
 | `HealthCheck.TimeoutSeconds` | int | 5 | Health check request timeout (seconds) |

@@ -172,6 +172,7 @@ cp config.json.example config.json
     "RequestTimeoutSeconds": 300,
     "MaxRetryAttempts": 3,
     "DebugPrompt": false,
+    "ExposeUpstreamErrors": true,
     "HealthCheck": {
         "Enabled": true,
         "IntervalSeconds": 30,
@@ -338,6 +339,31 @@ Authorization: Bearer sk-your-unified-api-key
 
 ### 错误响应
 
+当降级链上所有路由都失败时，ModelMux 会把收集到的上游错误一并返回，让调用方看到真实原因，而不是笼统的失败提示：
+
+```json
+{
+  "error": {
+    "message": "All routes exhausted for model 'openrouter/google/gemini-3.8-flash'",
+    "type": "all_routes_failed",
+    "attempts": [
+      {
+        "model": "openrouter/google/gemini-3.8-flash",
+        "status": 403,
+        "upstream_error": {
+          "message": "This model is not available in your region.",
+          "code": "403"
+        }
+      }
+    ]
+  }
+}
+```
+
+`error.message` 与 `error.type` 保持原有结构，现有客户端不受影响。`attempts` 最多 10 条，每条错误信息截断至 512 字符。将 `ExposeUpstreamErrors` 设为 `false` 可完全省略 `attempts`（日志仍会记录上游错误）。
+
+在调用上游之前就失败的路由错误保持原有结构：
+
 ```json
 {
   "error": {
@@ -370,6 +396,7 @@ Authorization: Bearer sk-your-unified-api-key
 | `RequestTimeoutSeconds` | int | 300 | 上游请求超时（秒） |
 | `MaxRetryAttempts` | int | 3 | Fallback 最大尝试次数 |
 | `DebugPrompt` | bool | false | 设为 true 时，Debug 级别日志输出 messages 内容（注意隐私） |
+| `ExposeUpstreamErrors` | bool | true | 为 true 时，最终 `all_routes_failed` 响应中包含 `attempts` 数组，列出每次上游尝试的状态码与截断后的错误信息。若网关暴露在公网、上游错误体可能含敏感信息，设为 `false`。无论该值如何，日志始终记录上游错误。 |
 | `HealthCheck.Enabled` | bool | true | 是否启用后台健康检查 |
 | `HealthCheck.IntervalSeconds` | int | 30 | 轮询间隔（秒） |
 | `HealthCheck.TimeoutSeconds` | int | 5 | 健康检查请求超时（秒） |
