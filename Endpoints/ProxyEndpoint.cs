@@ -17,7 +17,8 @@ public static class ProxyEndpoint
         HttpContext context,
         RouterService router,
         ProxyService proxy,
-        ILogger logger)
+        ILogger logger,
+        bool exposeUpstreamErrors = true)
     {
         // path = "chat/completions" (the **path captured from /v1/{**path})
         // We reconstruct the full OpenAI path: /v1/chat/completions
@@ -101,6 +102,7 @@ public static class ProxyEndpoint
 
         // Try each route in the chain
         var ct = context.RequestAborted;
+        var failures = new List<AttemptFailure>();
         for (int i = 0; i < routes.Count; i++)
         {
             var route = routes[i];
@@ -111,7 +113,7 @@ public static class ProxyEndpoint
                 "Routing request: model={ClientModel} -> target={TargetModel} @ {UpstreamUrl}",
                 model, route.UpstreamModelName, upstreamUrl);
 
-            var upstreamResponse = await proxy.ForwardAsync(
+            var (upstreamResponse, failure) = await proxy.ForwardAsync(
                 route.BaseUrl,
                 route.ApiKey,
                 path,
@@ -131,17 +133,79 @@ public static class ProxyEndpoint
                 return;
             }
 
-            // Failed — try next fallback
+            // Failed — record the upstream error and try next fallback
+            if (failure != null)
+            {
+                failures.Add(failure with { Model = route.ModelName });
+            }
             logger.LogWarning(
                 "Route {Index}/{Total} failed: {TargetModel}, trying next fallback...",
                 i + 1, routes.Count, route.ModelName);
         }
 
-        // All routes failed
+        // All routes failed — report what each upstream actually said.
         context.Response.StatusCode = 502;
         context.Response.ContentType = "application/json";
-        await context.Response.WriteAsync(
-            $"{{\"error\":{{\"message\":\"All routes exhausted for model '{model}'\",\"type\":\"all_routes_failed\"}}}}");
+        await WriteAllRoutesFailedAsync(
+            context.Response, model, failures, exposeUpstreamErrors);
+    }
+
+    /// <summary>
+    /// Write the final "all routes failed" error response. Keeps the original
+    /// error.message / error.type shape for backward compatibility and appends an
+    /// "attempts" array when upstream error exposure is enabled.
+    /// AOT-safe: Utf8JsonWriter only, no reflection.
+    /// </summary>
+    private static async Task WriteAllRoutesFailedAsync(
+        HttpResponse response,
+        string model,
+        List<AttemptFailure> failures,
+        bool exposeUpstreamErrors)
+    {
+        const int MaxAttempts = 10;
+
+        using var ms = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(ms))
+        {
+            writer.WriteStartObject();
+            writer.WritePropertyName("error");
+            writer.WriteStartObject();
+            writer.WriteString("message", $"All routes exhausted for model '{model}'");
+            writer.WriteString("type", "all_routes_failed");
+
+            if (exposeUpstreamErrors && failures.Count > 0)
+            {
+                writer.WritePropertyName("attempts");
+                writer.WriteStartArray();
+                foreach (var f in failures.Take(MaxAttempts))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("model", f.Model);
+                    if (f.Status.HasValue)
+                        writer.WriteNumber("status", f.Status.Value);
+                    else
+                        writer.WriteNull("status");
+
+                    writer.WritePropertyName("upstream_error");
+                    writer.WriteStartObject();
+                    if (f.ErrorMessage != null)
+                        writer.WriteString("message", f.ErrorMessage);
+                    if (f.ErrorCode != null)
+                        writer.WriteString("code", f.ErrorCode);
+                    if (f.Raw != null)
+                        writer.WriteString("raw", f.Raw);
+                    writer.WriteEndObject();
+
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }
+
+        await response.Body.WriteAsync(ms.ToArray());
     }
 
     /// <summary>

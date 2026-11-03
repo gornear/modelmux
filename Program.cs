@@ -220,7 +220,9 @@ public class Program
             var router = context.RequestServices.GetRequiredService<RouterService>();
             var proxy = context.RequestServices.GetRequiredService<ProxyService>();
             var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("ProxyEndpoint");
-            await ProxyEndpoint.HandleProxyAsync(context, router, proxy, logger);
+            var settings = context.RequestServices.GetRequiredService<AppSettings>();
+            await ProxyEndpoint.HandleProxyAsync(
+                context, router, proxy, logger, settings.ExposeUpstreamErrors);
         });
 
         var logger = app.Services.GetRequiredService<ILogger<Program>>();
