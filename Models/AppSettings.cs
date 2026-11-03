@@ -28,6 +28,14 @@ public class AppSettings
     /// When true, log message content at Debug level. Default false (privacy-safe).
     /// </summary>
     public bool DebugPrompt { get; set; } = false;
+    /// <summary>
+    /// When true, the final error response includes an "attempts" array describing
+    /// each upstream failure (status code + truncated error message). Default true.
+    /// Set false when the gateway is exposed publicly and upstream error bodies
+    /// may contain sensitive information. Logs always record upstream errors
+    /// regardless of this setting.
+    /// </summary>
+    public bool ExposeUpstreamErrors { get; set; } = true;
 }
 
 public class KestrelSettings

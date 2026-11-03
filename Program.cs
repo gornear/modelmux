@@ -174,7 +174,8 @@ public class Program
                 sp.GetRequiredService<ILogger<ProxyService>>(),
                 sp.GetRequiredService<HealthCheckService>(),
                 appSettings.RequestTimeoutSeconds,
-                appSettings.DebugPrompt));
+                appSettings.DebugPrompt,
+                appSettings.ExposeUpstreamErrors));
         // Configure IHttpClientFactory for TCP connection pooling
         builder.Services.AddHttpClient("Proxy", client =>
         {

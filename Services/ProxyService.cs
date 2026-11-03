@@ -12,19 +12,22 @@ public class ProxyService
     private readonly HealthCheckService _healthCheck;
     private readonly int _timeoutSeconds;
     private readonly bool _debugPrompt;
+    private readonly bool _exposeUpstreamErrors;
 
     public ProxyService(
         IHttpClientFactory httpClientFactory,
         ILogger<ProxyService> logger,
         HealthCheckService healthCheck,
         int timeoutSeconds = 300,
-        bool debugPrompt = false)
+        bool debugPrompt = false,
+        bool exposeUpstreamErrors = true)
     {
         _httpClientFactory = httpClientFactory;
         _logger = logger;
         _healthCheck = healthCheck;
         _timeoutSeconds = timeoutSeconds;
         _debugPrompt = debugPrompt;
+        _exposeUpstreamErrors = exposeUpstreamErrors;
     }
 
     /// <summary>

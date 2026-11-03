@@ -438,3 +438,6 @@ FodyWeavers.xsd
 # AOT publish artifacts (debug symbols, static web assets)
 *.dbg
 *.staticwebassets.endpoints.json
+
+# superpowers scratch
+.superpowers/
