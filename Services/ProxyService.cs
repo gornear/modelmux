@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using modelmux.Models;
 using Microsoft.Extensions.Logging;
 
 namespace modelmux.Services;
@@ -32,9 +33,11 @@ public class ProxyService
 
     /// <summary>
     /// Forward a request to the upstream provider and return the response.
-    /// Returns null if the upstream is unreachable.
+    /// Returns (null, failure) when the upstream is unreachable or returns a non-2xx
+    /// status; the failure carries the upstream's own error message so the caller can
+    /// report the real cause instead of a generic "all routes failed".
     /// </summary>
-    public async Task<HttpResponseMessage?> ForwardAsync(
+    public async Task<(HttpResponseMessage? Response, AttemptFailure? Failure)> ForwardAsync(
         string baseUrl,
         string apiKey,
         string path,
@@ -159,26 +162,112 @@ public class ProxyService
             var response = await client.SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, ct);
             _healthCheck.MarkHealthy(baseUrl);
 
-            // Treat 4xx/5xx as failure so ProxyEndpoint can try fallbacks
+            // Treat 4xx/5xx as failure so ProxyEndpoint can try fallbacks, but capture
+            // the upstream's error body first — it is the only place the real cause lives.
             if (!response.IsSuccessStatusCode)
             {
+                var failure = await ExtractUpstreamError(response, targetModel, ct);
                 _logger.LogWarning(
-                    "Upstream {Url} returned {StatusCode}, trying next fallback",
-                    url, (int)response.StatusCode);
+                    "Upstream {Url} returned {StatusCode}: {Error}",
+                    url, (int)response.StatusCode, failure.ErrorMessage ?? failure.Raw);
                 response.Dispose();
-                return null;
+                return (null, failure);
             }
 
-            return response;
+            return (response, null);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             _logger.LogWarning(
-                "Upstream {Url} unreachable, trying next fallback",
-                url);
+                "Upstream {Url} unreachable: {ErrorType}",
+                url, ex.GetType().Name);
             _healthCheck.MarkUnhealthy(baseUrl);
-            return null;
+            return (null, new AttemptFailure
+            {
+                Model = targetModel,
+                Status = null,
+                ErrorMessage = ex.GetType().Name
+            });
         }
+    }
+
+    /// <summary>
+    /// Read an upstream error response and extract a compact, safe summary.
+    /// Prefers the structured error.message / error.code fields; falls back to a
+    /// truncated raw body. Never throws — a read failure yields a minimal record.
+    /// AOT-safe: JsonDocument only, no reflection.
+    /// </summary>
+    private static async Task<AttemptFailure> ExtractUpstreamError(
+        HttpResponseMessage response,
+        string targetModel,
+        CancellationToken ct)
+    {
+        const int MaxLength = 512;
+        var status = (int)response.StatusCode;
+
+        string body;
+        try
+        {
+            body = await response.Content.ReadAsStringAsync(ct);
+        }
+        catch
+        {
+            return new AttemptFailure { Model = targetModel, Status = status };
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+            return new AttemptFailure { Model = targetModel, Status = status };
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("error", out var err) &&
+                err.ValueKind == JsonValueKind.Object)
+            {
+                string? message = null;
+                string? code = null;
+
+                if (err.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
+                    message = m.GetString();
+                if (err.TryGetProperty("code", out var c))
+                {
+                    code = c.ValueKind switch
+                    {
+                        JsonValueKind.String => c.GetString(),
+                        JsonValueKind.Number => c.GetRawText(),
+                        _ => null
+                    };
+                }
+
+                return new AttemptFailure
+                {
+                    Model = targetModel,
+                    Status = status,
+                    ErrorMessage = Truncate(message, MaxLength),
+                    ErrorCode = code
+                };
+            }
+        }
+        catch
+        {
+            // Not JSON — fall through to raw capture.
+        }
+
+        return new AttemptFailure
+        {
+            Model = targetModel,
+            Status = status,
+            Raw = Truncate(body, MaxLength)
+        };
+    }
+
+    /// <summary>Truncate to at most <paramref name="max"/> characters.</summary>
+    private static string? Truncate(string? value, int max)
+    {
+        if (string.IsNullOrEmpty(value))
+            return value;
+        return value.Length <= max ? value : value[..max];
     }
 
     /// <summary>
