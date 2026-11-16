@@ -173,6 +173,22 @@ public class ProxyService
 
             return (response, null);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The client walked away (e.g. the user pressed ESC in the TUI). This says
+            // nothing about upstream health, so the circuit breaker must stay untouched —
+            // otherwise one cancel would poison the whole baseUrl for the entire
+            // UnhealthyCooldownSeconds window and every later request would answer
+            // "No healthy routes found" until a manual restart.
+            _logger.LogInformation(
+                "Upstream {Url} request cancelled by client", url);
+            return (null, new AttemptFailure
+            {
+                Model = targetModel,
+                Status = null,
+                ErrorMessage = "client_cancelled"
+            });
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(
